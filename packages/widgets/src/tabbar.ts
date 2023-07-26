@@ -576,6 +576,49 @@ export class TabBar<T> extends Widget {
   }
 
   /**
+   * Get all adjecent child nodes from the parent of the focused Element by Id
+   *
+   * #### Notes
+   * This currently only get the id of all children
+   * but can be extended to get other element data
+   * findIndex method item array will need to be updated
+   */
+  getElementData(element: { children: any }) {
+    let elementData = [];
+    if (element.children) {
+      for (let child of element.children) {
+        if (
+          child.classList.contains('lm-TabBar-tab') ||
+          child.classList('lm-TabBar-tab lm-mod-current')
+        ) {
+          elementData.push({
+            id: child.id
+          });
+        }
+      }
+    }
+
+    return elementData;
+  }
+
+  /**
+   * Get the index of a child element within its parent using its id
+   *
+   * #### Notes
+   * will return index = -1 if an index is not found
+   */
+  findIndex(items: Array<{ id: string }>, id: string): number {
+    let index = -1;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].id === id) {
+        index = i;
+        break;
+      }
+    }
+    return index;
+  }
+
+  /**
    * Handle the DOM events for the tab bar.
    *
    * @param event - The DOM event sent to the tab bar.
@@ -693,7 +736,7 @@ export class TabBar<T> extends Widget {
       );
       input.addEventListener('blur', onblur);
       input.addEventListener('keydown', (event: KeyboardEvent) => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Tab') {
           if (input.value !== '') {
             title.label = title.caption = input.value;
           }
@@ -734,37 +777,47 @@ export class TabBar<T> extends Widget {
    */
   private _evtKeyDown(event: KeyboardEvent): void {
     // Allow for navigation using tab key
-    if (event.key === 'Tab' || event.eventPhase === Event.CAPTURING_PHASE) {
+    if (event.key === 'Enter') {
       return;
     }
 
     // Check if Enter or Spacebar key has been pressed and open that tab
     if (
+      event.key === 'Space' ||
       event.key === 'Enter' ||
-      event.key === 'Spacebar' ||
       event.key === ' '
     ) {
+      event.preventDefault();
+      event.stopPropagation();
+
       // Get focus element that is in focus by the tab key
       const focusedElement = document.activeElement;
 
-      // Test first if the focus is on the add button node
-      if (
-        this.addButtonEnabled &&
-        this.addButtonNode.contains(focusedElement)
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        this._addRequested.emit();
-      } else {
-        const index = ArrayExt.findFirstIndex(this.contentNode.children, tab =>
-          tab.contains(focusedElement)
-        );
-        if (index >= 0) {
-          event.preventDefault();
-          event.stopPropagation();
-          this.currentIndex = index;
+      if (focusedElement) {
+        
+        // Check if the focus element was the add button
+        if (focusedElement.classList.contains('lm-TabBar-addButton')) {
+          this._addRequested.emit();
+        } else {
+          // Find the index of the focusedElement among tab nodes
+          let parentElement = focusedElement.parentElement;
+          if (parentElement) {
+            const nodeData = this.getElementData(parentElement);
+
+            // Activate the index of the pressed tab.
+            let index = this.findIndex(nodeData, focusedElement.id);
+            this.currentIndex = index;
+          }
         }
       }
+    }
+    // Stop all input events during drag.
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Release the mouse if `Escape` is pressed.
+    if (event.keyCode === 27) {
+      this._releaseMouse();
     }
   }
 
@@ -800,6 +853,13 @@ export class TabBar<T> extends Widget {
       return;
     }
 
+    let addButtonTabbed =
+      this.addButtonEnabled &&
+       this.addButtonNode.contains(event.target as HTMLElement);
+    if (index === -1 && !addButtonTabbed) {
+      return;
+    }
+
     // Pressing on a tab stops the event propagation.
     event.preventDefault();
     event.stopPropagation();
@@ -826,7 +886,7 @@ export class TabBar<T> extends Widget {
     this.document.addEventListener('pointerup', this, true);
 
     // Do nothing else if the middle button or add button is clicked.
-    if (event.button === 1 || addButtonClicked) {
+    if (event.button === 1 || addButtonClicked || addButtonTabbed) {
       return;
     }
 
